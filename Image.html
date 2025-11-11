@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Responsive Image Gallery</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7fafc; /* Light gray background */
+        }
+
+        /* 3. Smooth Transitions and Hover Effect */
+        .gallery-item-container {
+            position: relative;
+            overflow: hidden;
+            border-radius: 0.5rem;
+            transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+            cursor: pointer;
+        
+        }
+        .gallery-item-container:hover {
+            transform: scale(1.03);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Lightbox Overlay */
+        #lightbox {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease;
+        }
+
+        #lightbox.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .lightbox-content {
+            position: relative;
+            max-width: 90%;
+            max-height: 90%;
+        }
+
+        .lightbox-image {
+            display: block;
+            max-width: 100%;
+            max-height: 80vh; /* Responsive height limit */
+            border-radius: 0.5rem;
+        }
+        
+        .nav-btn {
+            background-color: rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 1rem;
+            border-radius: 50%;
+            transition: background-color 0.2s;
+            z-index: 51;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            border: none;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+        }
+
+        .nav-btn:hover {
+            background-color: rgba(255, 255, 255, 0.4);
+        }
+
+        #prev-btn { left: 1rem; }
+        #next-btn { right: 1rem; }
+        #close-btn { 
+            position: absolute; 
+            top: 1rem; 
+            right: 1rem; 
+            background: none; 
+            color: white; 
+            font-size: 2rem; 
+            z-index: 52; 
+        }
+
+        .filter-btn.active {
+            @apply bg-teal-600 text-white shadow-lg shadow-teal-500/50;
+        }
+    </style>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        setLogLevel('Debug');
+        
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+
+        if (Object.keys(firebaseConfig).length > 0) {
+            const app = initializeApp(firebaseConfig);
+            const db = getFirestore(app);
+            const auth = getAuth(app);
+            
+            async function authenticate() {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                    console.log("Firebase Auth successful. User ID:", auth.currentUser?.uid || "Anonymous");
+                } catch (error) {
+                    console.error("Firebase authentication failed:", error);
+                }
+            }
+            authenticate();
+        } else {
+             console.warn("Firebase configuration not found. Proceeding without backend services.");
+        }
+
+    </script>
+</head>
+<body class="min-h-screen">
+
+    <div class="container mx-auto px-4 py-8">
+        <header class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">My Digital Gallery</h1>
+            <p class="text-gray-500">A responsive layout with filtering and lightbox functionality.</p>
+        </header>
+
+        <div id="filter-container" class="flex flex-wrap justify-center gap-3 mb-12">
+            <button class="filter-btn active transition duration-150 ease-in-out px-6 py-2 rounded-full text-sm font-semibold shadow-md" data-category="all">All</button>
+            <button class="filter-btn bg-white text-gray-700 hover:bg-teal-500 hover:text-white transition duration-150 ease-in-out px-6 py-2 rounded-full text-sm font-semibold shadow-md" data-category="nature">Nature</button>
+            <button class="filter-btn bg-white text-gray-700 hover:bg-teal-500 hover:text-white transition duration-150 ease-in-out px-6 py-2 rounded-full text-sm font-semibold shadow-md" data-category="city">Cityscapes</button>
+            <button class="filter-btn bg-white text-gray-700 hover:bg-teal-500 hover:text-white transition duration-150 ease-in-out px-6 py-2 rounded-full text-sm font-semibold shadow-md" data-category="abstract">Abstract</button>
+        </div>
+        <div id="image-grid" class="grid gap-6">
+
+        </div>
+    </div>
+    <div id="lightbox">
+        <button id="close-btn" aria-label="Close Lightbox">&times;</button>
+        
+        <button id="prev-btn" class="nav-btn p-3 hidden sm:block" aria-label="Previous Image">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+        </button>
+        
+        <div class="lightbox-content">
+            <img id="lightbox-image" class="lightbox-image" src="" alt="Full-size gallery image">
+            <p id="image-caption" class="text-center text-white mt-4 text-sm"></p>
+        </div>
+
+        <button id="next-btn" class="nav-btn p-3 hidden sm:block" aria-label="Next Image">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+        </button>
+    </div>
+
+    <script>
+        const imageGrid = document.getElementById('image-grid');
+        const filterContainer = document.getElementById('filter-container');
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImage = document.getElementById('lightbox-image');
+        const imageCaption = document.getElementById('image-caption');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const closeBtn = document.getElementById('close-btn');
+
+        let currentIndex = 0;
+        let currentFilter = 'all';
+
+        const images = [
+            { src: 'https://tse1.mm.bing.net/th/id/OIP.PqgeF2SjkZjKiLyjqZGT6QHaEo?cb=ucfimg2ucfimg=1&rs=1&pid=ImgDetMain&o=7&rm=3', category: "nature", title: "Emerald Forest Canopy" },
+            { src: "https://www.bing.com/th/id/OIP.VlFJXaccrleRhhEqSmVUUwHaEK?w=270&h=211&c=8&rs=1&qlt=90&o=6&cb=ucfimg1&dpr=1.3&pid=3.1&rm=2&ucfimg=1", category: "city", title: "Skyscrapers at Dawn" },
+            { src: "https://th.bing.com/th/id/OIP.2P8rKltSXe_KEniBWit3rQHaHa?w=175&h=180&c=7&r=0&o=7&cb=ucfimg2&dpr=1.3&pid=1.7&rm=3&ucfimg=1", category: "abstract", title: "Geometric Lines" },
+            { src: "https://www.bing.com/th/id/OIP.B8u7c37kE5ZdM5ZCRm-4hwHaFF?w=243&h=211&c=8&rs=1&qlt=90&o=6&cb=ucfimg1&dpr=1.3&pid=3.1&rm=2&ucfimg=1", category: "nature", title: "Mountain Peak View" },
+            { src: 'https://th.bing.com/th/id/OIP.SsY0_-5K2gu1WaGFoK8F2AHaEo?w=251&h=180&c=7&r=0&o=7&cb=ucfimg2&dpr=1.3&pid=1.7&rm=3&ucfimg=1', category: "city", title: "Busy Street Corner" },
+            { src: "https://www.bing.com/th/id/OIP.VU7tpdDCo56DLiJP2HydpAHaEP?w=290&h=211&c=8&rs=1&qlt=90&o=6&cb=ucfimg1&dpr=1.3&pid=3.1&rm=2&ucfimg=1", category: "abstract", title: "Fluid Color Waves" },
+            { src: "https://www.bing.com/th/id/OIP.nQtgA7IAcBVpGFu8FZzDvAHaEK?w=244&h=211&c=8&rs=1&qlt=90&o=6&cb=ucfimg1&dpr=1.3&pid=3.1&rm=2&ucfimg=1", category: "nature", title: "Desert Sunset" },
+            { src: "https://www.bing.com/th/id/OIP.c1XsWKEFfcPFZidEsSVvOAHaEn?w=240&h=211&c=8&rs=1&qlt=90&o=6&cb=ucfimg1&dpr=1.3&pid=3.1&rm=2&ucfimg=1", category: "city", title: "Industrial Architecture" },
+            { src: "https://th.bing.com/th/id/OIP.TaxoJNTqKSDf3WetU6mTcwHaH6?w=183&h=196&c=7&r=0&o=7&cb=ucfimg2&dpr=1.3&pid=1.7&rm=3&ucfimg=1", category: "abstract", title: "Chromatic Aberration" },
+        ];
+
+        
+        function renderGallery() {
+            imageGrid.innerHTML = ''; 
+            imageGrid.className = 'grid gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+
+            const filteredImages = images.filter(img => 
+                currentFilter === 'all' || img.category === currentFilter
+            );
+
+            filteredImages.forEach((img, index) => {
+                const itemContainer = document.createElement('div');
+                itemContainer.className = 'gallery-item-container';
+                itemContainer.dataset.index = images.indexOf(img); // Store original index
+                itemContainer.addEventListener('click', () => openLightbox(images.indexOf(img)));
+
+                const image = document.createElement('img');
+                image.src = img.src;
+                image.alt = img.title;
+                image.className = 'w-full h-auto object-cover rounded-lg aspect-[4/3]';
+
+                itemContainer.appendChild(image);
+                imageGrid.appendChild(itemContainer);
+            });
+        }
+
+
+        function openLightbox(index) {
+            currentIndex = index;
+            lightboxImage.src = images[currentIndex].src;
+            imageCaption.textContent = images[currentIndex].title;
+            lightbox.classList.add('visible');
+            document.body.style.overflow = 'hidden'; // Prevent scrolling background
+        }
+
+        function closeLightbox() {
+            lightbox.classList.remove('visible');
+            document.body.style.overflow = '';
+        }
+
+        function navigate(direction) {
+            let newIndex = currentIndex + direction;
+
+            if (newIndex < 0) {
+                newIndex = images.length - 1; // Loop back to the end
+            } else if (newIndex >= images.length) {
+                newIndex = 0; // Loop back to the start
+            }
+            openLightbox(newIndex);
+        }
+
+
+        prevBtn.addEventListener('click', (e) => { e.stopPropagation(); navigate(-1); });
+        nextBtn.addEventListener('click', (e) => { e.stopPropagation(); navigate(1); });
+        closeBtn.addEventListener('click', closeLightbox);
+        
+        lightbox.addEventListener('click', (e) => {
+            if (e.target.id === 'lightbox') {
+                closeLightbox();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (lightbox.classList.contains('visible')) {
+                if (e.key === 'ArrowLeft') navigate(-1);
+                if (e.key === 'ArrowRight') navigate(1);
+                if (e.key === 'Escape') closeLightbox();
+            }
+        });
+
+        filterContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('filter-btn')) {
+        
+                document.querySelectorAll('.filter-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                    btn.classList.add('bg-white', 'text-gray-700', 'hover:bg-teal-500', 'hover:text-white');
+                });
+                
+                e.target.classList.add('active');
+                e.target.classList.remove('bg-white', 'text-gray-700', 'hover:bg-teal-500', 'hover:text-white');
+
+                
+                currentFilter = e.target.dataset.category;
+                renderGallery();
+            }
+        });
+
+        window.onload = renderGallery;
+
+    </script>
+</body>
+</html>
